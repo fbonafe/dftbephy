@@ -163,10 +163,11 @@ def main(arguments=None):
     os.chdir(basedir + phonopy_dir)
 
     if phonopy_symprec is None:
-        ph = phonopy.load(phonopy_yaml)
+        ph = phonopy.load(phonopy_yaml, fc_calculator='traditional')
         print(" - using phonopy's default symmetry precision.")
     else:
-        ph = phonopy.load(phonopy_yaml, symprec=phonopy_symprec)
+        ph = phonopy.load(phonopy_yaml, symprec=phonopy_symprec,
+                          fc_calculator='traditional')
         print(" - phonopy's symmetry precision set to", phonopy_symprec)
 
 

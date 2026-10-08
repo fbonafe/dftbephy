@@ -45,6 +45,46 @@ def path_dict_to_paths(path_dict):
     
     return path, path_labels, npoints
 
+PHONON_FREQ_TOL_MEV = 0.1   # fold |omega| below this, raise above it
+
+def sanitize_frequencies(ph_oms, tol_meV=PHONON_FREQ_TOL_MEV, fold=True, name='frequencies'):
+    """Guard against imaginary (negative) phonon frequencies.
+
+    phonopy returns frequencies in THz, with imaginary modes reported as
+    negative numbers. Any mode more negative than -tol_meV raises a
+    ValueError. Smaller ones are only reported, and replaced by |omega| when
+    fold is True, which keeps the sign of the Bose factor and of the 1/omega
+    prefactor in g^2 correct.
+
+    ph_oms is either an array of shape (nqpoints, nmodes) or a list of such
+    arrays, one per path segment; the same type is returned.
+    """
+    tol_THz = 1e-3 * tol_meV / THZ__EV
+
+    is_list = isinstance(ph_oms, (list, tuple))
+    arrays = list(ph_oms) if is_list else [ph_oms]
+
+    worst = min(float(np.min(a)) for a in arrays)
+    if worst >= 0.0:
+        return ph_oms
+
+    if worst < -tol_THz:
+        raise ValueError(
+            'imaginary phonon %s: lowest mode is %.6g THz (%.4f meV), past the '
+            'tolerance of %.6g THz (%.4f meV). Check the acoustic-sum-rule drift of '
+            'the force constants, the geometry relaxation and the supercell size.'
+            % (name, worst, 1e3 * worst * THZ__EV, -tol_THz, -tol_meV))
+
+    nneg = sum(int(np.count_nonzero(a < 0.0)) for a in arrays)
+    print(' - WARNING: %d imaginary %s, lowest %.6g THz (%.4f meV)%s'
+          % (nneg, name, worst, 1e3 * worst * THZ__EV,
+             '; using |omega|.' if fold else '; kept as negative values.'))
+
+    if not fold:
+        return ph_oms
+    out = [np.abs(a) for a in arrays]
+    return out if is_list else out[0]
+
 def reorder_modes(ph_oms, ph_evs):
     ######## reorder phonon modes ###########
     ## based on the idea presented in https://quantumtinkerer.tudelft.nl/blog/connecting-the-dots/
@@ -313,7 +353,7 @@ def run_calc_ph_bands(ph, dftb, inp_dict, basedir, phonopy_dir, working_dir, res
 
     # reorder phonon modes
     ph_evs = bs_dict['eigenvectors']
-    ph_oms = bs_dict['frequencies']
+    ph_oms = sanitize_frequencies(bs_dict['frequencies'], fold=False, name='band frequencies')
     qpoints= bs_dict['qpoints']
     frequencies, eigenvectors = reorder_modes(ph_oms, ph_evs)
 
@@ -375,7 +415,7 @@ def run_calc_epc(ph, dftb, inp_dict, basedir, phonopy_dir, working_dir, results_
 
     mesh = ph.get_qpoints_dict()
     mesh_qpoints = qps
-    mesh_frequencies = mesh['frequencies'] 
+    mesh_frequencies = sanitize_frequencies(mesh['frequencies'], name='mesh frequencies')
     mesh_eigenvectors = mesh['eigenvectors']
 
     print('-- starting el-ph calculation ...')
@@ -471,7 +511,7 @@ def run_calc_ephline(ph, dftb, inp_dict, basedir, phonopy_dir, working_dir, resu
 
     # reorder phonon modes
     ph_evs = bs_dict['eigenvectors']
-    ph_oms = bs_dict['frequencies']
+    ph_oms = sanitize_frequencies(bs_dict['frequencies'], name='band frequencies')
     qpoints= bs_dict['qpoints']
     frequencies, eigenvectors = reorder_modes(ph_oms, ph_evs)
 
@@ -587,7 +627,7 @@ def run_calc_rtline(ph, dftb, inp_dict, basedir, phonopy_dir, working_dir, resul
 
     mesh = ph.get_qpoints_dict()
     mesh_qpoints = qps
-    mesh_frequencies = mesh['frequencies'] 
+    mesh_frequencies = sanitize_frequencies(mesh['frequencies'], name='mesh frequencies')
     mesh_eigenvectors = mesh['eigenvectors']
 
     print('-- starting el-ph calculation ...')

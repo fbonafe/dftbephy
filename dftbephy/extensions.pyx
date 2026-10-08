@@ -7,7 +7,7 @@ cimport numpy as np
 
 import cython
 
-from libc.math cimport sqrt, exp
+from libc.math cimport sqrt, exp, expm1, fabs
 
 cdef extern from "<complex.h>" namespace "std" nogil:
     double complex exp(double complex z)
@@ -268,9 +268,20 @@ def alphaFnk(long n, double eps, double[:] frequency_points, double[:,:,:,:] mes
                     alphaF_view[nf] +=   weight_ph * mesh_g2[iq,lam,m,n] * weight_el / nqpoints
     return alphaF
 
+# smallest |x| = |hbar*omega|/kBT admitted into the Bose factor; below this the
+# occupation is clamped instead of dividing by (almost) zero.
+cdef double BOSE_XMIN = 1e-10
+
 @cython.cdivision(True)
 cdef double bose(double x):
-    return 1.0/(exp(x) - 1.0)
+    # Residual imaginary acoustic modes reach here as small negative x. Fold to
+    # |x| so the occupation keeps the right sign, and floor it so x == 0 cannot
+    # divide by zero. expm1 is used instead of exp(x)-1, which loses most of its
+    # significant digits for |x| << 1.
+    cdef double ax = fabs(x)
+    if ax < BOSE_XMIN:
+        ax = BOSE_XMIN
+    return 1.0/expm1(ax)
 
 @cython.cdivision(True)
 cdef double fermi(double x):

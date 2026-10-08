@@ -22,8 +22,12 @@ except ModuleNotFoundError:
                         alphaF[nf] +=   weight_ph * mesh_g2[iq,lam,m,n] * weight_el
         return alphaF/nqpoints
 
+    BOSE_XMIN = 1e-10
+
     def bose(x):
-        return 1/(np.exp(x) - 1)
+        # see the Cython version in extensions.pyx for the rationale
+        ax = np.maximum(np.abs(x), BOSE_XMIN)
+        return 1/np.expm1(ax)
 
     def fermi(x):
         return 1/(np.exp(x) + 1)
